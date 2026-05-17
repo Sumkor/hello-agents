@@ -41,7 +41,8 @@ def majority_vote_cn(votes: Dict[str, str]) -> tuple[str, int]:
     """中文版多数投票统计"""
     if not votes:
         return "无人", 0
-    
+
+    # 提取所有被投人的姓名，自动统计每个人出现的次数，再取出得票最多的候选人
     vote_counts = Counter(votes.values())
     most_voted = vote_counts.most_common(1)[0]
     

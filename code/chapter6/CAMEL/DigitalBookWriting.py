@@ -4,16 +4,19 @@ from camel.utils import print_text_animated
 from camel.models import ModelFactory
 from camel.types import ModelPlatformType
 from dotenv import load_dotenv
+from openai import APIConnectionError
 import os
+import time
 
 load_dotenv()
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL")
-LLM_MODEL = os.getenv("LLM_MODEL")
+LLM_MODEL = os.getenv("LLM_MODEL_ID")
 
 #创建模型,在这里以Qwen为例,调用的百炼大模型平台API
 model = ModelFactory.create(
-    model_platform=ModelPlatformType.QWEN,
+    # model_platform=ModelPlatformType.QWEN,
+    model_platform=ModelPlatformType.MINIMAX,
     model_type=LLM_MODEL,
     url=LLM_BASE_URL,
     api_key=LLM_API_KEY
@@ -21,6 +24,7 @@ model = ModelFactory.create(
 
 # 定义协作任务
 task_prompt = """
+请使用中文回复。
 创作一本关于"拖延症心理学"的短篇电子书，目标读者是对心理学感兴趣的普通大众。
 要求：
 1. 内容科学严谨，基于实证研究
@@ -37,7 +41,8 @@ role_play_session = RolePlaying(
     assistant_role_name="心理学家", 
     user_role_name="作家", 
     task_prompt=task_prompt,
-    model=model
+    model=model,
+    output_language="Chinese"  # 强制输出中文
 )
 
 print(Fore.CYAN + f"具体任务描述:\n{role_play_session.task_prompt}\n")
@@ -45,11 +50,28 @@ print(Fore.CYAN + f"具体任务描述:\n{role_play_session.task_prompt}\n")
 # 开始协作对话
 chat_turn_limit, n = 30, 0
 input_msg = role_play_session.init_chat()
+max_retries = 3
 
 while n < chat_turn_limit:
     n += 1
-    assistant_response, user_response = role_play_session.step(input_msg)
     
+    # 添加重试机制处理网络波动
+    assistant_response, user_response = None, None
+    for attempt in range(max_retries):
+        try:
+            assistant_response, user_response = role_play_session.step(input_msg)
+            break  # 成功则跳出重试循环
+        except APIConnectionError as e:
+            print(Fore.RED + f"⚠️ 网络连接错误 (尝试 {attempt+1}/{max_retries}): {e}")
+            if attempt == max_retries - 1:
+                raise  # 重试耗尽则抛出
+            wait_time = 5 * (attempt + 1)
+            print(Fore.YELLOW + f"等待 {wait_time} 秒后重试...")
+            time.sleep(wait_time)
+    
+    if assistant_response is None or user_response is None:
+        continue
+        
     print_text_animated(Fore.BLUE + f"作家:\n\n{user_response.msg.content}\n")
     print_text_animated(Fore.GREEN + f"心理学家:\n\n{assistant_response.msg.content}\n")
     

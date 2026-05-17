@@ -1,0 +1,10 @@
+{
+  "venvPath": "C:\\Users\\Sumkor\\.conda\\envs",
+  "venv": "helloagent",
+  "include": ["."],
+  "executionEnvironments": [
+    {
+      "root": "."
+    }
+  ]
+}

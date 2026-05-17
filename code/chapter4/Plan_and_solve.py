@@ -43,6 +43,7 @@ class Planner:
         
         try:
             plan_str = response_text.split("```python")[1].split("```")[0].strip()
+            # 将字符串安全地解析为 Python 字面量数据结构（如列表、字典、字符串等）
             plan = ast.literal_eval(plan_str)
             return plan if isinstance(plan, list) else []
         except (ValueError, SyntaxError, IndexError) as e:
@@ -83,6 +84,9 @@ class Executor:
         final_answer = ""
         
         print("\n--- 正在执行计划 ---")
+        # enumerate(plan, 1) 遍历 plan 数据，指定起始索引为 1，打印时符合直觉
+        # i 步骤编号（1, 2, 3, ...）
+        # step 步骤内容字符串
         for i, step in enumerate(plan, 1):
             print(f"\n-> 正在执行步骤 {i}/{len(plan)}: {step}")
             prompt = EXECUTOR_PROMPT_TEMPLATE.format(

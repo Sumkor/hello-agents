@@ -143,6 +143,12 @@ async def run_software_development_team():
         termination_condition=termination,
         max_turns=20,  # 增加最大轮次
     )
+    # 编排方式               路由机制	                    适用场景
+    # RoundRobinGroupChat	固定顺序轮转	                    顺序工作流，角色明确
+    # SelectorGroupChat     LLM动态选择下一个发言者	        动态对话，灵活工作流
+    # Swarm	                Agent通过HandoffMessage主动交接	客服分诊、专业路由
+    # MagenticOneGroupChat	编排器+专家Agent	                复杂网页/文件任务
+    # GraphFlow	            有向图自定义流程	                复杂条件逻辑、循环
     
     # 定义开发任务
     task = """我们需要开发一个比特币价格显示应用，具体要求如下：

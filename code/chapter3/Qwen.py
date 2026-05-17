@@ -6,7 +6,8 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # 指定模型ID
-model_id = "Qwen/Qwen1.5-0.5B-Chat"
+# model_id = "Qwen/Qwen1.5-0.5B-Chat"
+model_id = "C:/Sumkor/Model/Qwen1.5-0.5B-Chat"
 
 # 设置设备，优先使用GPU
 device = "cuda" if torch.cuda.is_available() else "cpu"

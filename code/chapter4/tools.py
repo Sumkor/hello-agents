@@ -55,6 +55,7 @@ class ToolExecutor:
     一个工具执行器，负责管理和执行工具。
     """
     def __init__(self):
+        # 字典结构={工具名称:{工具描述:工具方法}}
         self.tools: Dict[str, Dict[str, Any]] = {}
 
     def registerTool(self, name: str, description: str, func: callable):
