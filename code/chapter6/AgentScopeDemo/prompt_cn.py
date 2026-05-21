@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """三国狼人杀中文提示词"""
+from game_roles import GameRoles
 
 class ChinesePrompts:
     """中文提示词管理类"""
@@ -7,7 +8,9 @@ class ChinesePrompts:
     @staticmethod
     def get_role_prompt(role: str, character: str) -> str:
         """获取角色提示词"""
+        trait = GameRoles.get_character_trait(character)
         base_prompt = f"""你是{character}，在这场三国狼人杀游戏中扮演{role}。
+你的性格特点：{trait}
 
 请严格按照以下JSON格式回复，不要添加任何其他文字：
 {{

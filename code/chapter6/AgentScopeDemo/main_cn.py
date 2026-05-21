@@ -10,7 +10,7 @@ from typing import List, Dict, Optional
 
 from agentscope.agent import ReActAgent
 from agentscope.model import DashScopeChatModel
-from agentscope.pipeline import MsgHub, sequential_pipeline, fanout_pipeline
+from agentscope.pipeline import MsgHub, fanout_pipeline
 from agentscope.formatter import DashScopeMultiAgentFormatter
 
 from prompt_cn import ChinesePrompts
@@ -21,7 +21,7 @@ from structured_output_cn import (
     WitchActionModelCN,
     get_seer_model_cn,
     get_hunter_model_cn,
-    WerewolfKillModelCN
+    get_werewolf_kill_model_cn,
 )
 from utils_cn import (
     check_winning_cn,
@@ -68,6 +68,9 @@ class ThreeKingdomsWerewolfGame:
             formatter=DashScopeMultiAgentFormatter(),
         )
         
+        # 关闭默认控制台输出，避免冗长的 JSON 打印
+        agent.set_console_output_enabled(False)
+        
         # 角色身份确认
         await agent.observe(
             await self.moderator.announce(
@@ -107,6 +110,18 @@ class ThreeKingdomsWerewolfGame:
             else:
                 self.villagers.append(agent)
         
+        # 告知每位狼人他们的队友是谁
+        if len(self.werewolves) > 1:
+            wolf_names = [w.name for w in self.werewolves]
+            for wolf in self.werewolves:
+                teammates = [n for n in wolf_names if n != wolf.name]
+                await wolf.observe(
+                    await self.moderator.announce(
+                        f"【狼人身份确认】你的狼队友是：{', '.join(teammates)}。"
+                        f"夜晚讨论和投票时请不要选择狼队友作为击杀目标。"
+                    )
+                )
+        
         # 游戏开始公告
         await self.moderator.announce(
             f"三国狼人杀游戏开始！参与者：{format_player_list(self.alive_players)}"
@@ -124,7 +139,7 @@ class ThreeKingdomsWerewolfGame:
         # 狼人讨论
         async with MsgHub(
             self.werewolves,
-            enable_auto_broadcast=True,
+            enable_auto_broadcast=False,
             announcement=await self.moderator.announce(
                 f"狼人们，请讨论今晚的击杀目标。存活玩家：{format_player_list(self.alive_players)}"
             ),
@@ -132,29 +147,32 @@ class ThreeKingdomsWerewolfGame:
             # 讨论阶段
             for _ in range(MAX_DISCUSSION_ROUND):
                 for wolf in self.werewolves:
-                    await wolf(structured_model=DiscussionModelCN)
+                    resp = await wolf(structured_model=DiscussionModelCN)
+                    if resp and hasattr(resp, 'metadata') and resp.metadata:
+                        meta = resp.metadata
+                        print(f"  🐺 {wolf.name}: 信心{meta.get('confidence_level', '?')}/10 | {meta.get('key_evidence', '无')}")
+                    else:
+                        print(f"  🐺 {wolf.name}: [发言无效]")
             
             # 投票击杀
             werewolves_hub.set_auto_broadcast(False)
+            # 构建可选目标列表（排除狼队友）
+            valid_kill_targets = [p.name for p in self.alive_players if p.name not in [w.name for w in self.werewolves]]
             kill_votes = await fanout_pipeline(
                 self.werewolves,
-                msg=await self.moderator.announce("请选择击杀目标"),
-                structured_model=WerewolfKillModelCN,
+                msg=await self.moderator.announce(f"请选择击杀目标，可选：{', '.join(valid_kill_targets)}"),
+                structured_model=get_werewolf_kill_model_cn(valid_kill_targets),
                 enable_gather=False,
             )
             
             # 统计投票
             votes = {}
             for i, vote_msg in enumerate(kill_votes):
-                # 检查vote_msg是否为None或metadata是否存在
                 if vote_msg is not None and hasattr(vote_msg, 'metadata') and vote_msg.metadata is not None:
                     votes[self.werewolves[i].name] = vote_msg.metadata.get("target")
                 else:
-                    # 如果返回无效,随机选择一个目标
                     print(f"⚠️ {self.werewolves[i].name} 的击杀投票无效,随机选择目标")
-                    import random
-                    valid_targets = [p.name for p in self.alive_players if p.name not in [w.name for w in self.werewolves]]
-                    votes[self.werewolves[i].name] = random.choice(valid_targets) if valid_targets else None
+                    votes[self.werewolves[i].name] = random.choice(valid_kill_targets) if valid_kill_targets else None
             
             killed_player, _ = majority_vote_cn(votes)
             return killed_player
@@ -275,13 +293,19 @@ class ThreeKingdomsWerewolfGame:
         # 讨论阶段
         async with MsgHub(
             self.alive_players,
-            enable_auto_broadcast=True,
+            enable_auto_broadcast=False,
             announcement=await self.moderator.announce(
                 f"现在开始自由讨论。存活玩家：{format_player_list(self.alive_players)}"
             ),
         ) as all_hub:
             # 每人发言一轮
-            await sequential_pipeline(self.alive_players)
+            for player in self.alive_players:
+                resp = await player(structured_model=DiscussionModelCN)
+                if resp and hasattr(resp, 'metadata') and resp.metadata:
+                    meta = resp.metadata
+                    print(f"  💬 {player.name}: 信心{meta.get('confidence_level', '?')}/10 | {meta.get('key_evidence', '无')}")
+                else:
+                    print(f"  💬 {player.name}: [发言无效]")
             
             # 投票阶段
             all_hub.set_auto_broadcast(False)

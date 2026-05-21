@@ -15,8 +15,7 @@ LLM_MODEL = os.getenv("LLM_MODEL_ID")
 
 #创建模型,在这里以Qwen为例,调用的百炼大模型平台API
 model = ModelFactory.create(
-    # model_platform=ModelPlatformType.QWEN,
-    model_platform=ModelPlatformType.MINIMAX,
+    model_platform=ModelPlatformType.QWEN,
     model_type=LLM_MODEL,
     url=LLM_BASE_URL,
     api_key=LLM_API_KEY
@@ -24,7 +23,6 @@ model = ModelFactory.create(
 
 # 定义协作任务
 task_prompt = """
-请使用中文回复。
 创作一本关于"拖延症心理学"的短篇电子书，目标读者是对心理学感兴趣的普通大众。
 要求：
 1. 内容科学严谨，基于实证研究
