@@ -111,7 +111,11 @@ class GameModerator(AgentBase):
             role="system"
         )
         self.game_log.append(content)
+        # 异步打印到控制台（人看的）
         await self.print(msg)
+        # 返回 Msg 对象，通过两种方式到达 AI 玩家：
+        # 方式一：agent.observe() — 私密通知单个玩家
+        # 方式二：MsgHub(announcement=...) — 广播给所有参与者
         return msg
     
     async def night_announcement(self, round_num: int) -> Msg:
