@@ -45,7 +45,7 @@ def majority_vote_cn(votes: Dict[str, str]) -> tuple[str, int]:
     # 提取所有被投人的姓名，自动统计每个人出现的次数，再取出得票最多的候选人
     vote_counts = Counter(votes.values())
     most_voted = vote_counts.most_common(1)[0]
-    
+    # 玩家名称，被投票数
     return most_voted[0], most_voted[1]
 
 
@@ -115,7 +115,7 @@ class GameModerator(AgentBase):
         await self.print(msg)
         # 返回 Msg 对象，通过两种方式到达 AI 玩家：
         # 方式一：agent.observe() — 私密通知单个玩家
-        # 方式二：MsgHub(announcement=...) — 广播给所有参与者
+        # 方式二：MsgHub(announcement=...) — 广播给指定参与者
         return msg
     
     async def night_announcement(self, round_num: int) -> Msg:

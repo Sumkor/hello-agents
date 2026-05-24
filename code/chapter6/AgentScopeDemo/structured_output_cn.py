@@ -103,19 +103,24 @@ def get_hunter_model_cn(agents: list[AgentBase]) -> type[BaseModel]:
     return HunterModelCN
 
 
-class WerewolfKillModelCN(BaseModel):
-    """中文版狼人击杀模型"""
+def get_werewolf_kill_model_cn(targets: list[AgentBase]) -> type[BaseModel]:
+    """获取中文版狼人击杀模型（targets 限定为非狼人存活玩家）"""
 
-    target: str = Field(
-        description="要击杀的玩家姓名",
-    )
-    kill_strategy: str = Field(
-        description="击杀策略说明",
-    )
-    team_coordination: Optional[str] = Field(
-        description="与狼队友的配合计划",
-        default=None
-    )
+    class WerewolfKillModelCN(BaseModel):
+        """中文版狼人击杀模型"""
+
+        target: Literal[tuple(_.name for _ in targets)] = Field(
+            description="要击杀的玩家姓名（不能是狼人同伴）",
+        )
+        kill_strategy: str = Field(
+            description="击杀策略说明",
+        )
+        team_coordination: Optional[str] = Field(
+            description="与狼队友的配合计划",
+            default=None
+        )
+
+    return WerewolfKillModelCN
 
 
 class GameAnalysisModelCN(BaseModel):

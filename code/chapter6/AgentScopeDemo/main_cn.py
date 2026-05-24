@@ -4,6 +4,7 @@
 融合三国演义角色和传统狼人杀玩法
 """
 import asyncio
+import json
 import os
 import random
 from typing import List, Dict, Optional
@@ -21,17 +22,85 @@ from structured_output_cn import (
     WitchActionModelCN,
     get_seer_model_cn,
     get_hunter_model_cn,
-    WerewolfKillModelCN
+    get_werewolf_kill_model_cn,
 )
 from utils_cn import (
     check_winning_cn,
     majority_vote_cn,
     get_chinese_name,
     format_player_list,
+    format_player_list_str,
     GameModerator,
     MAX_GAME_ROUND,
     MAX_DISCUSSION_ROUND,
 )
+
+
+def _extract_text(content) -> str:
+    """从 Msg.content 中提取纯文本（处理 list-of-blocks 格式）"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return ''.join(
+            b.get('text', '') if isinstance(b, dict) else str(b)
+            for b in content
+        )
+    return str(content) if content else ''
+
+
+_TEXT_FIELDS = [
+    'key_evidence', 'action_reason', 'shoot_reason',
+    'check_reason', 'kill_strategy', 'reason',
+    'team_coordination',
+]
+_SKIP_FIELDS = {'confidence_level', 'priority_level', 'suspicion_level'}
+
+
+def _try_print_readable(role: str, name: str, data: dict) -> bool:
+    """尝试从 dict 中提取可读内容并打印，成功返回 True"""
+    for key in _TEXT_FIELDS:
+        val = data.get(key)
+        if val:
+            print(f"【{role}】{name}: {val}")
+            return True
+    parts = [
+        f"{k}={v}" for k, v in data.items()
+        if k not in _SKIP_FIELDS and v is not None and v != ''
+    ]
+    if parts:
+        print(f"【{role}】{name}: {', '.join(parts)}")
+        return True
+    return False
+
+
+def format_reply_output(self, kwargs, output):
+    """Post-reply hook: 将 agent 回复格式化为【角色】名字: 内容 的可读形式"""
+    if output is None:
+        return None
+
+    role = getattr(self, 'role', '未知')
+    name = self.name
+
+    # 情况 1: 结构化输出已正确解析到 metadata
+    if hasattr(output, 'metadata') and output.metadata:
+        if _try_print_readable(role, name, output.metadata):
+            return output
+
+    # 情况 2: 从 content 提取文本，尝试 JSON 解析（structured model 有时
+    # 把原始 JSON 放在 content 而非 metadata 中）
+    raw = _extract_text(getattr(output, 'content', ''))
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if _try_print_readable(role, name, parsed):
+                return output
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # 情况 3: 纯文本内容
+        print(f"【{role}】{name}: {raw}")
+
+    return output
 
 
 class ThreeKingdomsWerewolfGame:
@@ -69,7 +138,13 @@ class ThreeKingdomsWerewolfGame:
         )
 
         # 关闭默认控制台输出，避免冗长的 JSON 打印
-        # agent.set_console_output_enabled(False)
+        agent.set_console_output_enabled(False)
+
+        # 在 agent 上保存角色信息，供 post_reply hook 使用
+        agent.role = role
+
+        # 注册 post_reply hook，将回复格式化为可读形式
+        agent.register_instance_hook("post_reply", "format_output", format_reply_output)
 
         # 角色身份确认
         await agent.observe(
@@ -124,6 +199,9 @@ class ThreeKingdomsWerewolfGame:
 
         await self.moderator.announce(f"🐺 狼人请睁眼，选择今晚要击杀的目标...")
 
+        # 构造可击杀目标列表（排除狼人自己）
+        valid_targets = [p for p in self.alive_players if p.name not in [w.name for w in self.werewolves]]
+
         # 狼人讨论
         async with MsgHub(
                 # MsgHub 创建
@@ -139,7 +217,7 @@ class ThreeKingdomsWerewolfGame:
                 self.werewolves,
                 enable_auto_broadcast=True,
                 announcement=await self.moderator.announce(
-                    f"狼人们，请讨论今晚的击杀目标。存活玩家：{format_player_list(self.alive_players)}"
+                    f"狼人们，请讨论今晚的击杀目标。可选目标（非狼人）：{format_player_list(valid_targets)}"
                 ),
         ) as werewolves_hub:
             # 讨论阶段
@@ -162,20 +240,17 @@ class ThreeKingdomsWerewolfGame:
                     # }
                     # 即告诉 LLM "请按这个 JSON schema 格式回复"
                     # 最终调用到 AgentBase.reply 方法，从 LLM 获取响应
-                    resp = await wolf(structured_model=DiscussionModelCN)
-                    if resp and hasattr(resp, 'metadata') and resp.metadata:
-                        meta = resp.metadata
-                        print(
-                            f"  🐺 {wolf.name}: 信心{meta.get('confidence_level', '?')}/10 | {meta.get('key_evidence', '无')}")
-                    else:
-                        print(f"  🐺 {wolf.name}: [发言无效]")
+                    await wolf(structured_model=DiscussionModelCN)
 
             # 投票击杀
+            # 讨论期间用 True 让消息流动，投票前用 False 切断广播，让每个狼人独立决策
             werewolves_hub.set_auto_broadcast(False)
+            # 扇出并发调用（fan-out），向所有狼人玩家同时发送投票指令，让每个狼人选择击杀目标。
             kill_votes = await fanout_pipeline(
                 self.werewolves,
                 msg=await self.moderator.announce("请选择击杀目标"),
-                structured_model=WerewolfKillModelCN,
+                structured_model=get_werewolf_kill_model_cn(valid_targets),
+                # 不自动聚合结果，返回值 kill_votes 是一个包含每条回复的列表
                 enable_gather=False,
             )
 
@@ -189,9 +264,7 @@ class ThreeKingdomsWerewolfGame:
                     # 如果返回无效,随机选择一个目标
                     print(f"⚠️ {self.werewolves[i].name} 的击杀投票无效,随机选择目标")
                     import random
-                    valid_targets = [p.name for p in self.alive_players if
-                                     p.name not in [w.name for w in self.werewolves]]
-                    votes[self.werewolves[i].name] = random.choice(valid_targets) if valid_targets else None
+                    votes[self.werewolves[i].name] = random.choice([p.name for p in valid_targets]) if valid_targets else None
 
             killed_player, _ = majority_vote_cn(votes)
             return killed_player
@@ -278,16 +351,23 @@ class ThreeKingdomsWerewolfGame:
 
             # 检查返回结果是否有效
             if hunter_action is None or not hasattr(hunter_action, 'metadata') or hunter_action.metadata is None:
-                print(f"⚠️ 猎人技能使用失败,视为放弃开枪")
+                msg = await self.moderator.announce("猎人未作出选择，视为放弃开枪。")
+                for player in self.alive_players:
+                    await player.observe(msg)
                 return None
 
             if hunter_action.metadata.get("shoot"):
                 target = hunter_action.metadata.get("target")
                 if target:
-                    await self.moderator.announce(f"猎人{hunter_agent.name}开枪带走了{target}")
+                    shot_msg = await self.moderator.announce(f"猎人{hunter_agent.name}开枪带走了{target}")
+                    # 广播猎人击杀结果到所有存活玩家的 memory
+                    for player in self.alive_players:
+                        await player.observe(shot_msg)
                     return target
                 else:
-                    print(f"⚠️ 猎人选择开枪但未指定目标,视为放弃")
+                    msg = await self.moderator.announce("猎人选择开枪但未指定目标，视为放弃。")
+                    for player in self.alive_players:
+                        await player.observe(msg)
                     return None
 
         return None
@@ -305,16 +385,30 @@ class ThreeKingdomsWerewolfGame:
                 self.witch = [p for p in self.witch if p.name != dead_name]
                 self.hunter = [p for p in self.hunter if p.name != dead_name]
 
-    async def day_phase(self, round_num: int):
+    async def day_phase(self, round_num: int, night_deaths: Optional[List[str]] = None):
         """白天阶段"""
         await self.moderator.day_announcement(round_num)
+
+        # 构建死亡公告信息（显式告知 AI 玩家）
+        death_info = ""
+        if night_deaths:
+            death_info = f"昨夜，{format_player_list_str(night_deaths)}不幸遇害。"
+        else:
+            death_info = "昨夜平安无事，无人死亡。"
+
+        # 白天开始前，提醒狼人隐藏身份（流程层注入，刷新上下文）
+        for wolf in self.werewolves:
+            await wolf.observe(await self.moderator.announce(
+                f"【狼人行动提醒】现在是白天讨论时间，你必须在所有人面前隐藏自己的狼人身份，"
+                f"假装是普通好人玩家，不要暴露你知道其他狼人的身份。"
+            ))
 
         # 讨论阶段
         async with MsgHub(
                 self.alive_players,
                 enable_auto_broadcast=True,
                 announcement=await self.moderator.announce(
-                    f"现在开始自由讨论。存活玩家：{format_player_list(self.alive_players)}"
+                    f"{death_info}\n现在开始自由讨论。存活玩家：{format_player_list(self.alive_players)}"
                 ),
         ) as all_hub:
             # 每人发言一轮
@@ -341,7 +435,10 @@ class ThreeKingdomsWerewolfGame:
                     votes[self.alive_players[i].name] = None
 
             voted_out, vote_count = majority_vote_cn(votes)
-            await self.moderator.vote_result_announcement(voted_out, vote_count)
+            vote_msg = await self.moderator.vote_result_announcement(voted_out, vote_count)
+            # 广播投票结果到所有存活玩家的 memory
+            for player in self.alive_players:
+                await player.observe(vote_msg)
 
             return voted_out
 
@@ -369,17 +466,14 @@ class ThreeKingdomsWerewolfGame:
                 night_deaths = [p for p in [final_killed, poisoned_player] if p]
                 self.update_alive_players(night_deaths)
 
-                # 死亡公告
-                await self.moderator.death_announcement(night_deaths)
-
                 # 检查胜利条件
                 winner = check_winning_cn(self.alive_players, self.roles)
                 if winner:
                     await self.moderator.game_over_announcement(winner)
                     return
 
-                # 白天阶段
-                voted_out = await self.day_phase(round_num)
+                # 白天阶段（内部包含死亡公告，显式通知所有 AI 玩家）
+                voted_out = await self.day_phase(round_num, night_deaths)
 
                 # 猎人技能
                 hunter_shot = await self.hunter_phase(voted_out)
