@@ -30,6 +30,7 @@ import re
 from typing import Optional, List, Tuple
 from hello_agents import ReActAgent, HelloAgentsLLM, Config, Message, ToolRegistry
 
+# 这个重写是没有意义的，逻辑基本与 ReActAgent 一致
 class MyReActAgent(ReActAgent):
     """
     重写的ReAct Agent - 推理与行动结合的智能体

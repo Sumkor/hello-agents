@@ -4,6 +4,7 @@ from typing import Optional
 from openai import OpenAI
 from hello_agents import HelloAgentsLLM
 
+# 扩展LLM基类，本质只是支持读取modelscope配置（api_key、base_url），底层均为OpenAI Chat Completions协议
 class MyLLM(HelloAgentsLLM):
     def __init__(
         self,
@@ -19,8 +20,8 @@ class MyLLM(HelloAgentsLLM):
             self.provider = "modelscope"
             
             # 解析 ModelScope 的凭证
-            self.api_key = api_key or os.getenv("MODELSCOPE_API_KEY")
-            self.base_url = base_url or "https://api-inference.modelscope.cn/v1/"
+            self.api_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("MODELSCOPE_API_KEY")
+            self.base_url = base_url or os.getenv("LLM_BASE_URL") or "https://api-inference.modelscope.cn/v1/"
             
             # 验证凭证是否存在
             if not self.api_key:

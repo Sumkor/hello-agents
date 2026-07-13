@@ -3,6 +3,7 @@ from typing import Optional, Iterator
 from hello_agents import SimpleAgent, HelloAgentsLLM, Config, Message
 import re
 
+# 这里主要重写了 run 方法以支持工具调用，stream_run 方法仍不支持
 class MySimpleAgent(SimpleAgent):
     """
     重写的简单对话Agent

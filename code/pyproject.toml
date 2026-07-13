@@ -1,5 +1,5 @@
 [project]
-name = "hello-agents"
+name = "hello-agents-book"
 version = "0.1.0"
 description = ""
 authors = [
@@ -23,6 +23,11 @@ dependencies = [
     "autogen-agentchat (>=0.7.5,<0.8.0)",
     "camel-ai (>=0.2.90,<0.3.0)",
     "agentscope (>=1.0.20,<2.0.0)",
+    "langchain-core (>=1.4.0,<2.0.0)",
+    "langchain-openai (>=1.2.2,<2.0.0)",
+    "langgraph (>=1.2.1,<2.0.0)",
+    "hello-agents (==0.1.1)",
+    "pytest (>=9.1.1,<10.0.0)",
 ]
 
 

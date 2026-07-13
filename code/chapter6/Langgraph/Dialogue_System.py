@@ -21,12 +21,15 @@ load_dotenv()
 
 # 定义状态结构
 class SearchState(TypedDict):
+    # list — 字段类型，说明 messages 是一个列表
+    # add_messages — 规约函数（reducer），决定当多个节点都想更新这个字段时，如何处理新旧值
+    # LangGraph 默认的行为是覆盖——后运行的节点会覆盖前一个节点写入的值。但消息通常需要追加而不是覆盖
     messages: Annotated[list, add_messages]
     user_query: str        # 用户查询
     search_query: str      # 优化后的搜索查询
     search_results: str    # Tavily搜索结果
     final_answer: str      # 最终答案
-    step: str             # 当前步骤
+    step: str              # 当前步骤
 
 # 初始化模型和Tavily客户端
 llm = ChatOpenAI(
